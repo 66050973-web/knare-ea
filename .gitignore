@@ -1,0 +1,22 @@
+# Secrets
+.env
+*.env
+webhook_bridge/.env
+
+# Build artifacts
+*.ex5
+compile*.log
+
+# Runtime-generated / fetched data (not source)
+KNARES_SentimentCache.json
+
+# Backtest reports (large, regenerable)
+backtests/
+
+# Local scratch helpers
+run_engine_tests.ps1
+engine_test_progress.txt
+
+# OS
+Thumbs.db
+.DS_Store
