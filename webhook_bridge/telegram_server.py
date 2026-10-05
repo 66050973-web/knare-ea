@@ -49,6 +49,10 @@ def webhook():
         
         if TELEGRAM_BOT_TOKEN != "YOUR_TELEGRAM_BOT_TOKEN_HERE":
             response = requests.post(TELEGRAM_API_URL, json=payload)
+            if response.status_code == 400:
+                # ข้อความมีอักขระ Markdown (เช่น _ ใน KILL_SWITCH) ที่ Telegram ตีความไม่ได้ -> ส่งซ้ำแบบข้อความธรรมดา
+                payload.pop("parse_mode", None)
+                response = requests.post(TELEGRAM_API_URL, json=payload)
             response.raise_for_status()
             print(f"[SUCCESS] Sent to Telegram: {message}")
         else:

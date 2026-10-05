@@ -21,6 +21,9 @@ string WEBHOOK_URL = "http://127.0.0.1:5000/webhook";
  */
 void SendTelegramWebhook(string symbol, string action, string message, string profit="")
 {
+   // Strategy Tester ใช้ WebRequest ไม่ได้ และจะสร้าง log error ซ้ำ ๆ
+   if(MQLInfoInteger(MQL_TESTER)) return;
+
    // 1. สร้าง JSON String ด้วยวิธี Manual อย่างง่าย
    string json_payload = StringFormat(
       "{\"symbol\":\"%s\",\"action\":\"%s\",\"message\":\"%s\",\"profit\":\"%s\"}",

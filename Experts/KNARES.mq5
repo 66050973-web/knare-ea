@@ -44,6 +44,7 @@
 #include <KNARES/OnnxOverlay.mqh>      // ระบบเชื่อมต่อโมดูล AI (ONNX)
 #include <KNARES/FeatureExport.mqh>    // ระบบส่งออกข้อมูลเพื่อใช้สอน AI
 #include <KNARES/NewsFilter.mqh>       // ตัวกรองข่าวสารเศรษฐกิจ
+#include <KNARES/DailyReport.mqh>        // รายงานสรุปรายวันส่ง Telegram
 #include <KNARES/SentimentFilter.mqh>  // ตัวกรอง Sentiment ข่าวจากภายนอก (Alpha Vantage)
 #include <KNARES/NewsConnector.mqh>    // ตัวเชื่อมต่อข้อมูลข่าวสารจากภายนอก
 #include <KNARES/Diagnostics.mqh>      // ระบบตรวจสอบสุขภาพของ EA
@@ -341,6 +342,12 @@ void RunTradingCycleImpl(string symbol)
    {
       LogNoTradeReasonPerBar(symbol, MainTF, "kill_switch");
       LogError("EQUITY KILL SWITCH ACTIVE. Initiating Hard Close...");
+      static datetime s_last_kill_alert = 0;
+      if(TimeCurrent() - s_last_kill_alert > 600) // กันส่งซ้ำทุก tick
+      {
+         s_last_kill_alert = TimeCurrent();
+         SendTelegramWebhook(symbol, "KILL_SWITCH", StringFormat("Equity drawdown reached limit. Closing ALL positions. Equity=%.2f Balance=%.2f", equity, balance));
+      }
       HardCloseAllPositions();
       return; 
    }
@@ -793,6 +800,7 @@ void OnTimerImpl()
 
    RunHealthChecks(); // ตรวจสอบความสมบูรณ์ของระบบโดยรวม
    UpdateNewsStatus(_Symbol); // อัปเดตสถานะข่าวสารปัจจุบัน
+   CheckDailyReport(); // ส่งรายงานรายวัน (ครั้งเดียวหลังเปลี่ยนวัน)
    MonitorParameterUpdate(); // ตรวจสอบว่ามีการเปลี่ยนแปลงการตั้งค่าขณะโปรแกรมรันอยู่หรือไม่
    UpdateMetrics(_Symbol); // อัปเดตสถิติระบบและยอดการถือครอง
    if(!tester_fast) TriggerDashboardUpdate(); // บังคับอัปเดตหน้าจอทุกรอบ Timer (5 วินาที)

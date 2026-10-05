@@ -7,6 +7,7 @@
 #include "SharedGlobals.mqh"
 #include "Logger.mqh"
 #include "Metrics.mqh"
+#include "TelegramWebhook.mqh"
 
 //+------------------------------------------------------------------+
 //| Engine Controller Module - ระบบควบคุมสถานะเครื่องมือเทรด                |
@@ -107,11 +108,13 @@ ENUM_ENGINE_STATUS GetEngineStatus(const string engine_name)
          {
             s_pause_until[idx] = TimeCurrent() + (datetime)EnginePausedCooldownHours * 3600;
             LogWarning(StringFormat("EngineAutoPause: %s paused for %dh (Rolling PF %.2f < 0.65)", engine_name, EnginePausedCooldownHours, r_pf));
+            SendTelegramWebhook(_Symbol, "ENGINE_PAUSED", StringFormat("%s paused for %dh (Rolling PF %.2f < 0.65)", engine_name, EnginePausedCooldownHours, r_pf));
          }
          if(TimeCurrent() < s_pause_until[idx]) return ENGINE_PAUSED_BY_ROLLING_PF;
          s_pause_until[idx]  = 0;
          s_resume_trades[idx] = engine_metrics[idx].trades;
          LogInfo(StringFormat("EngineAutoPause: %s resumed (grace %d trades)", engine_name, EngineResumeGraceTrades));
+         SendTelegramWebhook(_Symbol, "ENGINE_RESUMED", StringFormat("%s resumed (grace %d trades)", engine_name, EngineResumeGraceTrades));
       }
    }
 

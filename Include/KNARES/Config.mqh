@@ -57,6 +57,9 @@ input double SentimentSkipThreshold = 0.35;                  // ค่า |senti
 input int    SentimentCacheMaxAgeMin = 90;                   // อายุไฟล์ sentiment สูงสุดที่ยอมรับ (นาที) เกินกว่านี้ถือว่าข้อมูลเก่า ไม่ใช้กรอง
 input string SentimentCacheFileName = "KNARES_SentimentCache.json"; // ชื่อไฟล์ cache (ต้องอยู่ใน MQL5\Files ของ terminal)
 
+input group "--- 5C. TELEGRAM DAILY REPORT (รายงานสรุปรายวัน) ---"
+input bool   EnableDailyReport     = true;                   // ส่งสรุปผลรายวันเข้า Telegram หลังเปลี่ยนวันตามเวลา Server (ต้องรัน webhook_bridge/telegram_server.py)
+
 input group "--- ADVANCED: ENGINE TUNING (การปรับจูนระบบวิเคราะห์เชิงลึก) ---"
 input double TrendEngineATRStopMultiple = 2.5;              // ระยะ SL พิเศษเฉพาะกลยุทธ์ Trend
 input double TrendEngineTakeProfitR     = 2.0;              // เป้าหมายกำไรเฉพาะกลยุทธ์ Trend
