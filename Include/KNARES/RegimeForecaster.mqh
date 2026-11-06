@@ -21,30 +21,54 @@ double g_vars[3][2];
  * โมเดลนี้ใช้สำหรับพยากรณ์และระบุสภาวะตลาด (Regime)
  * @return true หากโหลดข้อมูลครบถ้วน, false หากขาดหายไป
  */
+bool g_hmm_loaded = false;   // true เมื่อโหลดพารามิเตอร์ HMM ครบ (ถ้า false ตัวกรอง HMM จะไม่ทำงาน)
+
 bool LoadApexHMM()
 {
-   string f_trans = "KNARES_HMM_Trans.csv";
-   string f_means = "KNARES_HMM_Means.csv";
-   string f_vars  = "KNARES_HMM_Vars.csv";
+   g_hmm_loaded = false;
+   // พารามิเตอร์ฝึกแยกตามไทม์เฟรม เพราะ Features (Return, ATR%) ขึ้นกับขนาดแท่งเทียน
+   string tf = StringSubstr(EnumToString(MainTF), 7);   // PERIOD_M5 -> "M5"
+   string f_trans = "KNARES_HMM_Trans_" + tf + ".csv";
+   string f_means = "KNARES_HMM_Means_" + tf + ".csv";
+   string f_vars  = "KNARES_HMM_Vars_"  + tf + ".csv";
 
-   if(!FileIsExist(f_trans, FILE_COMMON)) return false;
+   if(!FileIsExist(f_trans, FILE_COMMON) || !FileIsExist(f_means, FILE_COMMON) || !FileIsExist(f_vars, FILE_COMMON))
+   {
+      LogWarning("Apex HMM Engine: parameter files for " + tf + " not found. HMM filter DISABLED (run scripts/train_hmm.py " + tf + ").");
+      return false;
+   }
 
    // 1. โหลดตารางความน่าจะเป็นในการเปลี่ยนสถานะ (Transition Matrix)
    int h = FileOpen(f_trans, FILE_READ|FILE_CSV|FILE_ANSI|FILE_COMMON, ',');
+   if(h == INVALID_HANDLE) return false;
    for(int i=0; i<3; i++) for(int j=0; j<3; j++) g_trans_matrix[i][j] = FileReadNumber(h);
    FileClose(h);
 
-   // 2. โหลดค่าเฉลี่ยของ Features (Return และ Volatility) ของทั้ง 3 สภาวะ
+   // 2. โหลดค่าเฉลี่ยของ Features (Return และ ATR%) ของทั้ง 3 สภาวะ
    h = FileOpen(f_means, FILE_READ|FILE_CSV|FILE_ANSI|FILE_COMMON, ',');
+   if(h == INVALID_HANDLE) return false;
    for(int i=0; i<3; i++) for(int j=0; j<2; j++) g_means[i][j] = FileReadNumber(h);
    FileClose(h);
 
    // 3. โหลดค่าความแปรปรวน (Variances) ของทั้ง 3 สภาวะ
    h = FileOpen(f_vars, FILE_READ|FILE_CSV|FILE_ANSI|FILE_COMMON, ',');
+   if(h == INVALID_HANDLE) return false;
    for(int i=0; i<3; i++) for(int j=0; j<2; j++) g_vars[i][j] = FileReadNumber(h);
    FileClose(h);
 
-   LogInfo("Apex HMM Engine: All state parameters loaded.");
+   // ตรวจความสมเหตุสมผล: แต่ละแถวของ Transition Matrix ต้องรวมได้ ~1 และ Variance ต้องเป็นบวก
+   for(int i=0; i<3; i++)
+   {
+      double s = g_trans_matrix[i][0] + g_trans_matrix[i][1] + g_trans_matrix[i][2];
+      if(MathAbs(s - 1.0) > 0.01 || g_vars[i][0] <= 0 || g_vars[i][1] <= 0)
+      {
+         LogWarning("Apex HMM Engine: parameter files invalid. HMM filter DISABLED.");
+         return false;
+      }
+   }
+
+   g_hmm_loaded = true;
+   LogInfo("Apex HMM Engine: All state parameters loaded (" + tf + ").");
    return true;
 }
 

@@ -27,8 +27,14 @@ bool BuildTrendSignal(const MarketSnapshot &features, ENUM_REGIME_TYPE regime, S
 
    // --- การจัดการสภาวะ Unknown (Unknown Regime Bypass) ---
    // ตรวจสอบว่าอนุญาตให้เทรดในสภาวะที่ไม่ชัดเจน (Unknown) หรือไม่ เพื่อเพิ่มโอกาสในการเข้าเทรด
-   bool allow_unknown = (EnableUnknownRegimeBuilderBypass && regime == REGIME_UNKNOWN);
+   // ตาราง GetEngineRegimeMultiplier (DynamicThreshold.mqh) กำหนดให้ Trend ทำงานได้ใน TREND_VOLATILE (x0.7),
+   // RANGE (x0.3) และ TRANSITION (x0.4) ตัวสร้างสัญญาณจึงต้องไม่ปฏิเสธสภาวะเหล่านี้ล่วงหน้า (น้ำหนักลดลงที่ Pipeline)
+   bool vol_trend_regime = (regime == REGIME_TREND_VOLATILE);
+   bool weak_regime      = (regime == REGIME_RANGE || regime == REGIME_TRANSITION);
+   bool allow_unknown = ((EnableUnknownRegimeBuilderBypass && regime == REGIME_UNKNOWN) || weak_regime);
    ENUM_REGIME_TYPE effective_regime = regime;
+   if(vol_trend_regime)
+      effective_regime = (features.ema_fast >= features.ema_slow) ? REGIME_TREND_UP : REGIME_TREND_DOWN;
    
    // ถ้าอนุญาตและสภาวะปัจจุบันเป็น Unknown ให้ประเมินทิศทางจากเส้น EMA แทน (EMA Cross Heuristic)
    if(allow_unknown)
@@ -46,6 +52,13 @@ bool BuildTrendSignal(const MarketSnapshot &features, ENUM_REGIME_TYPE regime, S
    if(features.adx < TrendMinADXFloor)
    {
       signal.reason = StringFormat("low_adx_floor(%.2f < %.2f)", features.adx, TrendMinADXFloor);
+      return false;
+   }
+
+   // ความชัน ADX ขั้นต่ำ (MinAdxSlope) ทดสอบแล้วว่าค่า 0 ทำให้ผลแย่ลง จึงตั้งค่าเริ่มต้นไว้ให้ไม่กรอง
+   if(features.adx_slope < MinAdxSlope)
+   {
+      signal.reason = StringFormat("adx_slope_low(%.2f < %.2f)", features.adx_slope, MinAdxSlope);
       return false;
    }
 
@@ -113,7 +126,7 @@ bool BuildTrendSignal(const MarketSnapshot &features, ENUM_REGIME_TYPE regime, S
       // ป้องกันการเข้าเทรดในช่วงที่ราคาสูงเกินไปหรือเริ่มหมดแรง
       bool trend_guard_up = allow_unknown
                             ? (features.ema_slope > 0.0 && features.rsi >= 30.0 && features.rsi <= 70.0)
-                            : (features.ema_slope > 0.0 && features.rsi < 75.0);
+                            : (features.ema_slope > 0.0 && features.rsi < RSIOverbought);
       
       if(price_ok_up && trend_guard_up)
       {
@@ -179,7 +192,7 @@ bool BuildTrendSignal(const MarketSnapshot &features, ENUM_REGIME_TYPE regime, S
       // ตรวจสอบความชันและค่า RSI (Oversold Guard)
       bool trend_guard_down = allow_unknown
                               ? (features.ema_slope < 0.0 && features.rsi >= 30.0 && features.rsi <= 70.0)
-                              : (features.ema_slope < 0.0 && features.rsi > 25.0);
+                              : (features.ema_slope < 0.0 && features.rsi > RSIOversold);
       
       if(price_ok_down && trend_guard_down)
       {

@@ -655,7 +655,7 @@ void EvaluateProfitLock(ulong ticket, string symbol, ENUM_POSITION_TYPE type, co
       if(TrailingProfitLockStepR > 0)
          target_lock_r = MathFloor(target_lock_r / TrailingProfitLockStepR) * TrailingProfitLockStepR;
       
-      target_lock_r = MathMax(TrailingProfitLockMinR, MathMin(TrailingProfitLockMaxR, target_lock_r));
+      target_lock_r = MathMax(MathMax(TrailingProfitLockMinR, TrailingProfitLockR), MathMin(TrailingProfitLockMaxR, target_lock_r));
 
       double lock_level = (type == POSITION_TYPE_BUY) ? pos_open + (risk_dist * target_lock_r) + comm_buffer 
                                                       : pos_open - (risk_dist * target_lock_r) - comm_buffer;
@@ -676,6 +676,34 @@ void EvaluateProfitLock(ulong ticket, string symbol, ENUM_POSITION_TYPE type, co
             }
          }
       }
+   }
+}
+
+/**
+ * EvaluateEarlyBreakEven: เลื่อน SL มาที่จุดเข้า (+ค่าคอม) เมื่อกำไรถึง EarlyBreakEvenR ก่อนถึงเป้าแบ่งปิดแรก
+ */
+void EvaluateEarlyBreakEven(ulong ticket, string symbol, ENUM_POSITION_TYPE type, const MarketSnapshot &snap,
+                            double pos_open, double pos_sl, double pos_tp, double risk_dist, double profit_r,
+                            ExitIntent &intent)
+{
+   if(EarlyBreakEvenR <= 0.0 || risk_dist <= 0 || profit_r < EarlyBreakEvenR) return;
+   if(IsPositionCooldownActive(ticket, "EARLYBE")) return;
+
+   double comm_buffer = CommissionBufferPoints * SymbolInfoDouble(symbol, SYMBOL_POINT);
+   double be_level = (type == POSITION_TYPE_BUY) ? pos_open + comm_buffer : pos_open - comm_buffer;
+   be_level = NormalizePrice(symbol, be_level);
+
+   bool improves = (type == POSITION_TYPE_BUY && be_level > pos_sl) || (type == POSITION_TYPE_SELL && (be_level < pos_sl || pos_sl == 0));
+   if(!improves) return;
+   if(!CheckLevels(symbol, (type == POSITION_TYPE_BUY ? snap.bid : snap.ask), be_level, pos_tp)) return;
+
+   if(intent.priority < 55)
+   {
+      intent.action = EXIT_ACTION_MOD_PROFITLOCK;
+      intent.priority = 55;
+      intent.new_sl = be_level;
+      intent.new_tp = pos_tp;
+      intent.reason = "early_breakeven";
    }
 }
 
@@ -826,6 +854,7 @@ void ManagePositions(const MarketSnapshot &features, ENUM_REGIME_TYPE current_re
          EvaluateRegimeExit(ticket, symbol, type, current_regime, (datetime)PositionGetInteger(POSITION_TIME), profit_r, intent);
          EvaluateEarlyInvalidation(ticket, symbol, type, pos_snap, current_regime, profit_r, (datetime)PositionGetInteger(POSITION_TIME), intent);
          EvaluatePartialFallback(ticket, symbol, type, pos_snap, pos_open, pos_sl, pos_tp, risk_dist, current_profit_dist, pos_lots, intent);
+         EvaluateEarlyBreakEven(ticket, symbol, type, pos_snap, pos_open, pos_sl, pos_tp, risk_dist, profit_r, intent);
          EvaluateProfitLock(ticket, symbol, type, pos_snap, pos_open, pos_sl, pos_tp, risk_dist, current_profit_dist, profit_r, intent);
          EvaluateATRTrailing(ticket, symbol, type, pos_snap, pos_open, pos_sl, pos_tp, intent);
 

@@ -67,8 +67,23 @@ bool IsNewsConnectorActive(string symbol)
 /**
  * ดึงข้อมูลข่าวสารจาก ForexFactory API พร้อมระบบ Caching รายวัน
  */
+void ParseNewsCSV(string data);
 void FetchRealNews()
 {
+   if(StringLen(NewsCSVFile) > 0)
+   {
+      int ch = FileOpen(NewsCSVFile, FILE_READ|FILE_TXT|FILE_ANSI|FILE_COMMON);
+      if(ch != INVALID_HANDLE)
+      {
+         string csv = "";
+         while(!FileIsEnding(ch)) csv += FileReadString(ch) + "\n";
+         FileClose(ch);
+         ParseNewsCSV(csv);
+         LogInfo("News Engine: loaded CSV " + NewsCSVFile);
+         return;
+      }
+      LogWarning("News Engine: cannot open CSV " + NewsCSVFile + ", falling back to API");
+   }
    string cache_file = "KNARES_NewsCache_" + TimeToString(TimeCurrent(), TIME_DATE) + ".json";
    StringReplace(cache_file, ".", ""); // Remove dots from date format (e.g. 20260816)
    

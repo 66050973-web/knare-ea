@@ -63,6 +63,7 @@ bool ComputeDOMImbalance(string symbol, MarketSnapshot &snapshot)
    double mid_price = (SymbolInfoDouble(symbol, SYMBOL_BID) + SymbolInfoDouble(symbol, SYMBOL_ASK)) / 2.0;
 
    int size = ArraySize(book);
+   double bid_total = 0, ask_total = 0;
    for(int i = 0; i < size; i++)
    {
       // คำนวณระยะห่าง (Distance) ในหน่วยจุด
@@ -74,10 +75,13 @@ bool ComputeDOMImbalance(string symbol, MarketSnapshot &snapshot)
       
       // รวมน้ำหนักวอลลุ่มแยกฝั่ง
       if(book[i].type == BOOK_TYPE_BUY || book[i].type == BOOK_TYPE_BUY_MARKET)
-         weighted_bid_vol += (double)book[i].volume * weight;
+      { weighted_bid_vol += (double)book[i].volume * weight; bid_total += (double)book[i].volume; }
       else if(book[i].type == BOOK_TYPE_SELL || book[i].type == BOOK_TYPE_SELL_MARKET)
-         weighted_ask_vol += (double)book[i].volume * weight;
+      { weighted_ask_vol += (double)book[i].volume * weight; ask_total += (double)book[i].volume; }
    }
+
+   snapshot.bid_depth_total = bid_total;
+   snapshot.ask_depth_total = ask_total;
 
    // สรุปค่าความแตกต่างสุทธิ
    double total_weighted_vol = weighted_bid_vol + weighted_ask_vol;

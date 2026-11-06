@@ -12,14 +12,19 @@
 
 input group "--- 6. SMART MONEY CONCEPTS (SMC) ---"
 input bool   EnableSMCFilter              = true;   // เปิดใช้ตัวกรอง SMC (ช่วยลดความเสี่ยงจากการเทรดผิดโซนราคา)
-input ENUM_TIMEFRAMES SMCStructureTF      = PERIOD_M5;   // ไทม์เฟรมหลักที่ใช้ในการวิเคราะห์โครงสร้างราคา (BOS/CHoCH)
-input ENUM_TIMEFRAMES SMCHigherTF         = PERIOD_M15;  // ไทม์เฟรมที่สูงกว่าเพื่อใช้ยืนยันแนวโน้ม (HTF Confirmation)
+input ENUM_TIMEFRAMES SMCStructureTF      = PERIOD_M15;   // ไทม์เฟรมหลักที่ใช้ในการวิเคราะห์โครงสร้างราคา (BOS/CHoCH)
+input ENUM_TIMEFRAMES SMCHigherTF         = PERIOD_H1;  // ไทม์เฟรมที่สูงกว่าเพื่อใช้ยืนยันแนวโน้ม (HTF Confirmation)
 input bool   SMCUseBOSFilter              = true;   // เปิดใช้การกรองด้วย BOS (Break of Structure)
 input bool   SMCUseCHoCHFilter            = true;   // เปิดใช้การกรองด้วย CHoCH (Change of Character)
 input bool   SMCUsePremiumDiscountFilter  = true;   // เปิดใช้การกรองด้วยโซน Premium/Discount (ซื้อถูก/ขายแพง)
 input bool   SMCBlockBuyInPremium         = true;   // ห้ามเข้าซื้อ (Buy) ในโซนราคาที่แพงเกินไป
 input bool   SMCBlockSellInDiscount       = true;   // ห้ามเข้าขาย (Sell) ในโซนราคาที่ถูกเกินไป
 input bool   SMCStrictSellFilter          = true;   // เปิดใช้ระบบกรองฝั่งขายแบบเข้มงวดเป็นพิเศษ
+input int    SMCBookMapMode               = 0;      // แผนที่โครงสร้างตามตำรา SMC (0=ปิด, 1=ใช้ร่วมกับตัวกรองเดิม, 2=ใช้แทนตัวกรองโครงสร้างเดิม)
+input ENUM_TIMEFRAMES SMCBookMapTF        = PERIOD_H1;   // ไทม์เฟรมที่ใช้สร้างแผนที่ตามตำรา
+input int    SMCBookMapPivotN             = 3;      // จำนวนแท่งต่อข้างที่ใช้ยืนยัน swing (pivot N)
+input int    SMCBookMapWarmBars           = 4000;   // จำนวนแท่งย้อนหลังที่ใช้ warm-up แผนที่ตอนเริ่มทำงาน
+input bool   SMCBookMapLog                = false;  // บันทึกทิศแผนที่ทุกแท่งลงไฟล์ (ใช้ตรวจสอบกับต้นแบบ Python)
 
 input group "--- 7. SMC QUALITY GATE & RESCUE ---"
 input bool   EnableBuyContinuationPipelineRescue = true; // เปิดระบบช่วยเหลือเพื่อให้เข้าเทรดต่อได้หากเทรนด์ยังดีมาก

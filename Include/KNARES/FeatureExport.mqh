@@ -6,6 +6,123 @@
 #include "Config.mqh"
 #include "Logger.mqh"
 #include "RegimeClassifier.mqh"
+#include "MarketData.mqh"
+#include "FeatureEngine.mqh"
+
+//+------------------------------------------------------------------+
+//| Sample Export - บันทึกข้อมูลสำหรับฝึกโมเดล (ฟีเจอร์ตอนเข้า + ผลตอนออก)   |
+//| เขียน 2 ไฟล์ใน Common\Files\KNARES_Research:                          |
+//|   Entry_<symbol>_<tag>.csv  หนึ่งแถวต่อออเดอร์ที่เปิด (ฟีเจอร์ ณ จุดเข้า)   |
+//|   Exit_<symbol>_<tag>.csv   หนึ่งแถวต่อดีลปิด (ปิดบางส่วนได้หลายแถว)       |
+//| นำสองไฟล์มา join ด้วย PosId แล้วคำนวณ R = sum(Pnl) / RiskMoney          |
+//+------------------------------------------------------------------+
+
+bool g_sample_inited = false; // ล้างไฟล์เก่าครั้งเดียวต่อการรัน (เฉพาะ Strategy Tester)
+
+string SampleFileName(const string kind, const string symbol)
+{
+   string tag = SampleExportTag;
+   StringReplace(tag, "\r", "");
+   StringReplace(tag, "\n", "");
+   StringTrimLeft(tag);
+   StringTrimRight(tag);
+   if(tag == "") tag = "run";
+   return "KNARES_Research\\" + kind + "_" + symbol + "_" + tag + ".csv";
+}
+
+void SampleAppend(const string kind, const string symbol, const string header, const string row)
+{
+   FolderCreate("KNARES_Research", FILE_COMMON);
+
+   if(!g_sample_inited)
+   {
+      g_sample_inited = true;
+      if(MQLInfoInteger(MQL_TESTER))
+      {
+         FileDelete(SampleFileName("Entry", symbol), FILE_COMMON);
+         FileDelete(SampleFileName("Exit", symbol), FILE_COMMON);
+      }
+   }
+
+   string fname = SampleFileName(kind, symbol);
+   int h = FileOpen(fname, FILE_READ|FILE_WRITE|FILE_TXT|FILE_ANSI|FILE_COMMON|FILE_SHARE_READ|FILE_SHARE_WRITE);
+   if(h == INVALID_HANDLE) { LogWarning(StringFormat("SampleExport: FileOpen failed (%s) err=%d", fname, GetLastError())); return; }
+   if(FileSize(h) == 0) FileWriteString(h, header + "\r\n");
+   FileSeek(h, 0, SEEK_END);
+   uint wrote = FileWriteString(h, row + "\r\n");
+   FileClose(h);
+   static int dbg = 0;
+   if(dbg < 3) { dbg++; Print("SampleExport DEBUG kind=", kind, " file=", fname, " wrote=", wrote, " err=", GetLastError(), " tester=", MQLInfoInteger(MQL_TESTER)); }
+}
+
+string SampleNum(const double v, const int digits = 6)
+{
+   return MathIsValidNumber(v) ? DoubleToString(v, digits) : "0";
+}
+
+/**
+ * SampleExportEntry: เรียกทันทีหลังส่งคำสั่งเปิดออเดอร์สำเร็จ
+ * บันทึกฟีเจอร์ ณ จุดเข้า รวมฟีเจอร์ 8 ตัวที่ ONNX รับ (ADX, RSI, ATR*1000/ask, EMA diff, SMC x4)
+ * และฟีเจอร์สัมพัทธ์เพิ่มเติม เพื่อไม่ให้โมเดลเพี้ยนเมื่อระดับราคาทองเปลี่ยน
+ */
+void SampleExportEntry(const ulong pos_id, const SignalPack &signal, const RiskDecision &risk, const double fill_price)
+{
+   if(!EnableSampleExport || pos_id == 0) return;
+
+   MarketSnapshot s;
+   if(!GetMarketSnapshot(signal.symbol, s)) { LogWarning("SampleExport: GetMarketSnapshot failed"); return; }
+   ComputeFeatures(signal.symbol, s);
+
+   double ref   = (s.ask > 0.0) ? s.ask : fill_price;
+   double atr   = s.atr;
+   double bbw   = s.bb_upper - s.bb_lower;
+   double dcw   = s.donchian_high - s.donchian_low;
+   double px    = (fill_price > 0.0) ? fill_price : ref;
+   double dir   = (signal.direction == SIGNAL_BUY) ? 1.0 : -1.0;
+
+   string header = "Time,PosId,Symbol,TF,Engine,Dir,Regime,Score,Confidence,Entry,SL,TP,RiskMoney,Lots,SpreadPts,"
+                   "ADX,ADXSlope,RSI,ROC,ATR,ATRx1000,ATRPercentile,EMADiff,EMADiffATR,EMASlopePct,BBPos,BBWidthATR,"
+                   "DonchianPos,DonchianWidthATR,ZScore,HTFTrend,OBVSlope,VolRatio,SLDistATR,"
+                   "SMCBias,SMCZone,SMCBuyQ,SMCSellQ";
+
+   string row = TimeToString(TimeCurrent(), TIME_DATE|TIME_SECONDS) + "," + (string)pos_id + "," + signal.symbol + "," +
+                EnumToString(MainTF) + "," + signal.engine_name + "," + (string)((int)dir) + "," +
+                (string)((int)DetectRegime(s)) + "," +
+                SampleNum(signal.score, 4) + "," + SampleNum(signal.confidence, 4) + "," +
+                SampleNum(px, 5) + "," + SampleNum(signal.stop_price, 5) + "," + SampleNum(signal.take_profit_price, 5) + "," +
+                SampleNum(risk.risk_money, 2) + "," + SampleNum(risk.lots, 2) + "," + SampleNum(s.spread_points, 1) + "," +
+                SampleNum(s.adx, 3) + "," + SampleNum(s.adx_slope, 4) + "," + SampleNum(s.rsi, 3) + "," + SampleNum(s.roc, 5) + "," +
+                SampleNum(atr, 5) + "," + SampleNum(ref > 0.0 ? atr / ref * 1000.0 : 0.0, 5) + "," + SampleNum(s.atr_percentile, 4) + "," +
+                SampleNum(s.ema_fast - s.ema_slow, 5) + "," + SampleNum(atr > 0.0 ? (s.ema_fast - s.ema_slow) / atr : 0.0, 5) + "," +
+                SampleNum(s.ema_slope, 5) + "," +
+                SampleNum(bbw > 0.0 ? (px - s.bb_lower) / bbw : 0.5, 5) + "," + SampleNum(atr > 0.0 ? bbw / atr : 0.0, 5) + "," +
+                SampleNum(dcw > 0.0 ? (px - s.donchian_low) / dcw : 0.5, 5) + "," + SampleNum(atr > 0.0 ? dcw / atr : 0.0, 5) + "," +
+                SampleNum(s.zscore, 5) + "," + SampleNum(s.htf_trend, 1) + "," + SampleNum(s.obv_slope, 3) + "," +
+                SampleNum(s.vol_median > 0.0 ? (double)s.volume / s.vol_median : 0.0, 4) + "," +
+                SampleNum(atr > 0.0 ? MathAbs(px - signal.stop_price) / atr : 0.0, 4) + "," +
+                SampleNum(signal.smc_bias, 1) + "," + SampleNum(signal.smc_zone, 1) + "," +
+                SampleNum(signal.smc_buy_quality, 4) + "," + SampleNum(signal.smc_sell_quality, 4);
+
+   SampleAppend("Entry", signal.symbol, header, row);
+}
+
+/**
+ * SampleExportExit: เรียกทุกครั้งที่มีดีลปิด (ENTRY_OUT) บันทึกกำไรสุทธิ (รวมค่าคอม/swap) และเหตุผลที่ปิด
+ */
+void SampleExportExit(const ulong pos_id, const string symbol, const datetime t, const double volume,
+                      const double price, const double pnl, const long deal_reason, const int close_reason_idx,
+                      const string comment)
+{
+   if(!EnableSampleExport || pos_id == 0) return;
+
+   string header = "Time,PosId,Symbol,Volume,Price,Pnl,DealReason,CloseReasonIdx,Comment";
+   string c = comment;
+   StringReplace(c, ",", ";");
+   string row = TimeToString(t, TIME_DATE|TIME_SECONDS) + "," + (string)pos_id + "," + symbol + "," +
+                SampleNum(volume, 2) + "," + SampleNum(price, 5) + "," + SampleNum(pnl, 2) + "," +
+                (string)deal_reason + "," + (string)close_reason_idx + "," + c;
+   SampleAppend("Exit", symbol, header, row);
+}
 
 //+------------------------------------------------------------------+
 //| Feature Export Module - ระบบส่งออกข้อมูลเพื่อนำไปสอน AI (ML Training) |

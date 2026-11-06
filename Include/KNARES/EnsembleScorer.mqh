@@ -164,7 +164,7 @@ ENUM_SIGNAL_DIRECTION ResolveSignals(SignalPack &signals[], const MarketSnapshot
       }
 
       // กรองสัญญาณตามความผันผวน (Volatility Filter)
-      if(EnableVolatilityFilter && features.atr < features.atr_median * 0.3)
+      if(EnableVolatilityFilter && features.atr < features.atr_median * MinAtrMultiplier)
       {
          LogInfo(StringFormat("SmartFilter Blocked [%s]: Volatility extremely low", signals[i].engine_name));
          signals[i].direction = SIGNAL_NONE; continue;

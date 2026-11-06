@@ -4,6 +4,7 @@
 
 #include "Config.mqh"
 #include "Types.mqh"
+#include "PriceAction.mqh"
 #include "SharedGlobals.mqh"
 #include "Logger.mqh"
 #include "MarketData.mqh"
@@ -122,12 +123,34 @@ bool ExecutePipeline(const string symbol, const MarketSnapshot &snapshot, ENUM_R
 
    final_signal.symbol = symbol;
 
+   // ตัวกรอง Price Action (เปิดด้วย EnablePriceActionFilter): ต้องมี Engulfing/Pin Bar ยืนยันทิศทาง
+   if(EnablePriceActionFilter && !PriceActionConfirms(symbol, final_signal.direction))
+   {
+      LogNoTradeReasonPerBar(symbol, MainTF, "price_action_filter");
+      g_pipeline_final = "REJECT"; return false;
+   }
+
+   // ตัวกรอง SMC (เปิดด้วย EnableSMCFilter): Premium/Discount, BOS/CHoCH, โซนราคา
+   if(EnableSMCFilter)
+   {
+      SMCContext smc_ctx = ctx;
+      string smc_block = "";
+      if(!ApplySMCFilterToSignal(symbol, final_signal, snapshot, regime, smc_ctx, smc_block))
+      {
+         LogNoTradeReasonPerBar(symbol, MainTF, smc_block);
+         if(EnableSMCOverlay) SMCVisualDrawBlockMarker(symbol, final_signal, smc_block);
+         g_pipeline_final = "BLOCK_SMC"; return false;
+      }
+   }
+
    // 3. ปรับคะแนนตามสภาวะตลาด (Regime Multiplier)
    double raw_signal_score = final_signal.score;
    double regime_mult = GetEngineRegimeMultiplier(final_signal.engine_name, regime);
    final_signal.score *= regime_mult;
    bool is_breakout = (final_signal.engine_name == "BreakoutEngine");
 
+   if(regime_mult <= 0.0 && EnableUnknownRegimeConfBypass && regime == REGIME_UNKNOWN && AllowRegimeUnknownBypass(symbol, final_signal.confidence))
+      regime_mult = 1.0;
    if(regime_mult <= 0.0) {
       LogNoTradeReasonPerBar(symbol, MainTF, "block_regime_compatibility");
       g_pipeline_final = "BLOCK_REGIME"; return false;

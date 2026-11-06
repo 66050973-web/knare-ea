@@ -9,6 +9,7 @@
 #include "AlgoExecution.mqh"
 #include "PortfolioGovernor.mqh"
 #include "TradeTracking.mqh"
+#include "FeatureExport.mqh"
 #include <Trade/Trade.mqh>
 
 //+------------------------------------------------------------------+
@@ -334,6 +335,7 @@ bool TryOrderCheckWithFillingFallback(MqlTradeRequest &request, MqlTradeCheckRes
          return true;
       }
    }
+   LogOrderCheckDetails("fallback_exhausted", request, check_result, false);
    return false;
 }
 
@@ -500,9 +502,15 @@ bool SendOrder(const SignalPack &signal, const RiskDecision &risk)
          g_exec_safety_blocks++;
          return false;
       }
+      if(HasCorrelatedActiveIceberg(signal.symbol))
+      {
+         LogWarning("Iceberg soft-blocked: correlated symbol has an active algo order.");
+         g_exec_safety_blocks++;
+         return false;
+      }
       LogInfo(StringFormat("High Volume Protection: Splitting %.2f lots into Iceberg slices.", risk.lots));
       // เรียกใช้โมดูล AlgoExecution เพื่อแบ่งออเดอร์เป็น 10 ไม้ย่อย
-      bool created = CreateAlgoOrder(signal, risk, ALGO_ICEBERG, 10);
+      bool created = CreateAlgoOrder(signal, risk, ALGO_ICEBERG, MathMax(2, G_ICEBERG_SLICES));
       return created;
    }
 
@@ -596,7 +604,7 @@ bool SendOrder(const SignalPack &signal, const RiskDecision &risk)
             // แก้ไขออเดอร์ทันทีที่เปิดสำเร็จเพื่อใส่ SL/TP
             trade_manager.PositionModify(signal.symbol, prepared_sl, prepared_tp);
             ulong tkt = trade_manager.ResultOrder();
-            if(tkt > 0) BindPositionSMC(tkt, signal);
+            if(tkt > 0) { BindPositionSMC(tkt, signal); SampleExportEntry(tkt, signal, risk, live_entry_price); }
             return true;
          }
          else g_exec_ordersend_failed++;
@@ -619,7 +627,7 @@ bool SendOrder(const SignalPack &signal, const RiskDecision &risk)
          g_exec_slippage_samples++;
       }
       ulong tkt = trade_manager.ResultOrder();
-      if(tkt > 0) BindPositionSMC(tkt, signal);
+      if(tkt > 0) { BindPositionSMC(tkt, signal); SampleExportEntry(tkt, signal, risk, result_price > 0 ? result_price : live_entry_price); }
       LogTrade(signal.symbol, "OPEN", true, StringFormat("Order filled. Latency: %d ms", latency));
    }
    return res;

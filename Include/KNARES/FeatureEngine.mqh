@@ -171,5 +171,26 @@ bool ComputeFeatures(string symbol, MarketSnapshot &snapshot)
    // --- ขั้นตอนที่ 7: คำนวณ Z-Score (Mean Reversion Intensity) ---
    if(snapshot.atr > 0) snapshot.zscore = (snapshot.bid - snapshot.ema_slow) / snapshot.atr;
 
+   // --- ขั้นตอนที่ 8: ATR Percentile = อันดับเปอร์เซ็นไทล์ (0-100) ของ ATR ปัจจุบันเทียบกับ ATR ย้อนหลัง ---
+   // ใช้ตัดสินสภาวะ TREND_VOLATILE / BREAKOUT_PREP / CHOPPY / RANGE_CHOPPY ใน RegimeClassifier
+   // (ก่อนแก้ไข ฟิลด์นี้ไม่เคยถูกกำหนดค่า จึงเป็น 0 ตลอดและสภาวะเหล่านี้เข้าไม่ถึง)
+   snapshot.atr_percentile = 0.0;
+   int pct_n = MathMax(20, ATRPercentileLookback);
+   double atr_hist[];
+   ArraySetAsSeries(atr_hist, true);
+   if(snapshot.atr > 0 && CopyBuffer(handle_atr, 0, 1, pct_n, atr_hist) >= pct_n)
+   {
+      int below = 0;
+      for(int i = 0; i < pct_n; i++)
+         if(atr_hist[i] <= snapshot.atr) below++;
+      snapshot.atr_percentile = 100.0 * (double)below / (double)pct_n;
+   }
+
+   // --- ขั้นตอนที่ 9: Rate of Change (ROCPeriod แท่ง) หน่วยเปอร์เซ็นต์ ---
+   int roc_n = MathMax(1, ROCPeriod);
+   double c_now = iClose(symbol, MainTF, 1);
+   double c_old = iClose(symbol, MainTF, 1 + roc_n);
+   snapshot.roc = (c_old > 0.0) ? (c_now - c_old) / c_old * 100.0 : 0.0;
+
    return true;
 }

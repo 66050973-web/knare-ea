@@ -36,7 +36,8 @@ bool BuildBreakoutSignal(const MarketSnapshot &features, ENUM_REGIME_TYPE regime
                          MathAbs(features.zscore) >= MathMax(0.1, UnknownBreakoutMinAbsZ * 0.75));
    
    // ปฏิเสธหากสภาวะตลาดไม่เหมาะสมกับกลยุทธ์ Breakout
-   if(regime != REGIME_BREAKOUT_READY && regime != REGIME_TREND_UP && regime != REGIME_TREND_DOWN && !allow_unknown)
+   // ตารางตัวคูณกำหนดให้ Breakout ทำงานได้ใน BREAKOUT_PREP (x0.9) ด้วย
+   if(regime != REGIME_BREAKOUT_READY && regime != REGIME_BREAKOUT_PREP && regime != REGIME_TREND_UP && regime != REGIME_TREND_DOWN && !allow_unknown)
    {
       signal.reason = StringFormat("regime_mismatch(%s)", EnumToString(regime));
       return false;

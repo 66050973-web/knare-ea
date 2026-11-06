@@ -108,7 +108,26 @@ bool IsDailyLimitOk(string &fail_reason)
    }
 
    double balance = AccountInfoDouble(ACCOUNT_BALANCE);
-   double limit_money = balance * DailyHardLossPct;
+   // DailyHardLossPct / DailySoftLossPct เป็นหน่วยเปอร์เซ็นต์ (เดิมคูณตรงๆ ทำให้ขีดจำกัดเท่ากับ 105% ของยอดเงินและไม่เคยทำงาน)
+   double soft_money = balance * (DailySoftLossPct / 100.0);
+   string soft_key = "KNARES_DailySoft_" + TimeToString(today_start, TIME_DATE);
+   if(soft_money > 0 && daily_pnl <= -soft_money && !GlobalVariableCheck(soft_key))
+   {
+      GlobalVariableSet(soft_key, 1.0);
+      LogWarning(StringFormat("Daily Soft Loss Alert: %.2f <= -%.2f (%.2f%% of balance)", daily_pnl, soft_money, DailySoftLossPct));
+   }
+   double day_start_balance = balance - daily_pnl;
+   if(MaxDailyDrawdownPercent > 0 && day_start_balance > 0)
+   {
+      double dd_pct = (day_start_balance - AccountInfoDouble(ACCOUNT_EQUITY)) / day_start_balance * 100.0;
+      if(dd_pct >= MaxDailyDrawdownPercent)
+      {
+         fail_reason = "daily_max_drawdown";
+         LogError(StringFormat("Daily Max Drawdown Reached: %.2f%% >= %.2f%%", dd_pct, MaxDailyDrawdownPercent));
+         return false;
+      }
+   }
+   double limit_money = balance * (DailyHardLossPct / 100.0);
 
    if(daily_pnl <= -limit_money)
    {
@@ -389,7 +408,8 @@ bool IsTradingSession()
    TimeCurrent(dt);
    
    // 1. ตรวจสอบชั่วโมงการทำงานรายวัน (Start - End Hour)
-   if(dt.hour < StartHour || dt.hour >= EndHour)
+   bool in_skip = (SkipHourFrom >= 0 && dt.hour >= SkipHourFrom && dt.hour < SkipHourTo);
+   if(dt.hour < StartHour || dt.hour >= EndHour || in_skip)
    {
       LogInfo(StringFormat("Session blocked: server hour=%d outside [%d,%d)", dt.hour, StartHour, EndHour));
       return false;

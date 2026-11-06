@@ -16,6 +16,7 @@
 #include "RiskAccounting.mqh"
 #include "TradeJournal.mqh"
 #include "TelegramWebhook.mqh"
+#include "FeatureExport.mqh"
 
 //+------------------------------------------------------------------+
 //| Trade Event Handler Module - ระบบจัดการเหตุการณ์ธุรกรรมการเทรด         |
@@ -91,6 +92,7 @@ void HandleDealAddition(const MqlTradeTransaction &trans)
             engine_metrics[idx].pf = CalcPF(engine_metrics[idx].gross_profit, engine_metrics[idx].gross_loss);
             engine_metrics[idx].win_rate = CalcWinRate(engine_metrics[idx].wins, engine_metrics[idx].trades);
             engine_metrics[idx].expectancy = CalcExpectancy(engine_metrics[idx].wins, engine_metrics[idx].losses, engine_metrics[idx].gross_profit, engine_metrics[idx].gross_loss);
+            EvaluateEngineGuard(idx);
          }
 
          // Online AI Learning: train ด้วย label ที่ถูกต้อง (pnl รวม commission+swap) เฝียงตอนปิดออเดอร์เท่านั้น
@@ -106,6 +108,14 @@ void HandleDealAddition(const MqlTradeTransaction &trans)
          // วิเคราะห์และจัดหมวดหมู่สาเหตุการปิด
          long deal_reason = HistoryDealGetInteger(trans.deal, DEAL_REASON);
          int reason_idx = ClassifyCloseReason(deal_reason, comment, pnl);
+         SampleExportExit(pos_id, trans.symbol, (datetime)HistoryDealGetInteger(trans.deal, DEAL_TIME), closed_vol,
+                          HistoryDealGetDouble(trans.deal, DEAL_PRICE), pnl, deal_reason, reason_idx, comment);
+         if(EnableLegacyFeatureExport)
+         {
+            ENUM_SIGNAL_DIRECTION exp_dir = (HistoryDealGetInteger(trans.deal, DEAL_TYPE) == DEAL_TYPE_SELL) ? SIGNAL_BUY : SIGNAL_SELL;
+            ExportFeatures(snap, exp_dir, pnl);
+         }
+         if(!PositionSelectByTicket(pos_id)) ClearPositionFlags(pos_id); // ปิดครบแล้ว ล้างตัวแปร Global ของไม้
          
          if(reason_idx == CLOSE_EARLY_INVALIDATION)
          {

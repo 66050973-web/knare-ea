@@ -66,7 +66,7 @@ bool BuildPairSignal(string sym_a, string sym_b, PairSnapshot &snap, SignalPack 
    snap.ratio_zscore = zscore;
 
    // 5. เงื่อนไขการเข้าเทรด (ระดับนัยสำคัญทางสถิติที่ 2.2 Standard Deviations)
-   const double ENTRY_Z_THRESHOLD = 2.2;
+   const double ENTRY_Z_THRESHOLD = G_STATARB_Z_ENTRY;
    
    // หาก Z-score สูงเกินไป: สินทรัพย์ A แพงไป (Sell) และสินทรัพย์ B ถูกไปเมื่อเทียบกัน (Buy)
    if(zscore > ENTRY_Z_THRESHOLD)

@@ -42,6 +42,7 @@
 #include <KNARES/Utils.mqh>            // ฟังก์ชันอรรถประโยชน์ทั่วไป
 #include <KNARES/Visualization.mqh>    // ระบบการวาดภาพและกราฟิกบนหน้าจอ
 #include <KNARES/OnnxOverlay.mqh>      // ระบบเชื่อมต่อโมดูล AI (ONNX)
+#include <KNARES/MetaModel.mqh>         // ตัวกรองสัญญาณด้วยโมเดล ML (Meta-label)
 #include <KNARES/FeatureExport.mqh>    // ระบบส่งออกข้อมูลเพื่อใช้สอน AI
 #include <KNARES/NewsFilter.mqh>       // ตัวกรองข่าวสารเศรษฐกิจ
 #include <KNARES/DailyReport.mqh>        // รายงานสรุปรายวันส่ง Telegram
@@ -102,6 +103,13 @@ void RunTradingCycleImpl(string symbol)
       return;
    }
 
+   // พักคู่เงินหลังออกด้วย Regime Exit (RegimeExitSymbolLockSec = 0 คือไม่ล็อก)
+   if(IsRegimeExitLockActive(symbol))
+   {
+      LogNoTradeReasonPerBar(symbol, MainTF, "regime_exit_symbol_lock");
+      return;
+   }
+
    // 1. ตรวจสอบความพร้อมของข้อมูล (Warmup Check)
    // ตรวจสอบว่ามีจำนวนแท่งเทียนย้อนหลังเพียงพอสำหรับการคำนวณอินดิเคเตอร์หรือไม่
    if(!IsDataReady(symbol, MainTF, REQUIRED_WARMUP_BARS))
@@ -146,6 +154,7 @@ void RunTradingCycleImpl(string symbol)
    SMCContext ctx;
    __pt = GetMicrosecondCount();
    BuildSMCContext(symbol, snapshot, ctx);
+   if(EnableDebugLogs && is_new_bar) LogDebug(SMCContextSummary(symbol, ctx), true);
    g_prof_us[1] += GetMicrosecondCount() - __pt;
    
    // คำนวณความไม่สมดุลของปริมาณคำสั่งซื้อขายใน Order Book (Depth of Market)
@@ -173,6 +182,13 @@ void RunTradingCycleImpl(string symbol)
    // Early return if Volatility Shock pause is active
    // หากระบบตรวจพบภาวะช็อกของตลาด (Volatility Shock) จะหยุดการเปิดออเดอร์ใหม่
    string shock_key = "KNARES_Vol_Shock_Until";
+   // ตรวจจับภาวะช็อก: ATR สูงกว่าค่ากลางตั้งแต่ VolatilityShockMultiplier เท่า -> หยุดเปิดออเดอร์ VolatilityPauseHours ชั่วโมง
+   if(is_new_bar && snapshot.atr_median > 0.0 && snapshot.atr >= snapshot.atr_median * VolatilityShockMultiplier && !GlobalVariableCheck(shock_key))
+   {
+      GlobalVariableSet(shock_key, (double)(TimeCurrent() + (datetime)VolatilityPauseHours * 3600));
+      IncrementVolShockDetections();
+      LogWarning(StringFormat("Volatility Shock: ATR %.3f >= %.1fx median %.3f. Pausing new entries for %dh.", snapshot.atr, VolatilityShockMultiplier, snapshot.atr_median, VolatilityPauseHours));
+   }
    if(GlobalVariableCheck(shock_key))
    {
       datetime until = (datetime)GlobalVariableGet(shock_key);
@@ -267,6 +283,11 @@ void RunTradingCycleImpl(string symbol)
                            RiskDecision rec_risk;
                            if(EvaluateRisk(recovery_signal, snapshot, rec_risk))
                            {
+                              if(RecoveryLotMultiplier > 0.0 && RecoveryLotMultiplier != 1.0)
+                              {
+                                 rec_risk.lots = NormalizeLot(symbol, rec_risk.lots * RecoveryLotMultiplier);
+                                 rec_risk.risk_money *= RecoveryLotMultiplier;
+                              }
                               if(SendOrderWithRetry(recovery_signal, rec_risk))
                               {
                                  ReserveGlobalRisk(rec_risk.risk_money);
@@ -332,7 +353,7 @@ void RunTradingCycleImpl(string symbol)
 
    // 5. ตรวจสอบ News Filter และ Kill Switch
    // เช็คว่ามีข่าวแรงหรือไม่ และเช็ค Drawdown ของพอร์ต
-   bool news_active = IsNewsActive(symbol);
+   bool news_active = IsNewsActive(symbol) || (EnableNewsFilter && IsNewsConnectorActive(symbol));
    double balance = AccountInfoDouble(ACCOUNT_BALANCE);
    double equity = AccountInfoDouble(ACCOUNT_EQUITY);
    bool kill_switch = (balance > 0 && (1.0 - (equity / balance)) * 100.0 >= EquityKillSwitchPct * 100.0);
@@ -355,10 +376,11 @@ void RunTradingCycleImpl(string symbol)
    // 6. อัปเดต Dashboard
    // แสดงผลสภาวะตลาดและสถานะการกรองบนหน้าจอหลัก
    if(symbol == _Symbol) UpdateDashboard(regime, news_active, kill_switch);
+   if(EnableSMCOverlay && symbol == _Symbol) PlotSMCOverlay(symbol, ctx, snapshot, regime, is_new_bar, g_pipeline_final, g_pipeline_score);
 
    // 7. ตรวจสอบความปลอดภัยเบื้องต้น (Execution Safe)
    // ตรวจสอบค่า Spread ว่ากว้างเกินเกณฑ์รับได้หรือไม่
-   bool execution_safe = IsExecutionSafe(symbol);
+   bool execution_safe = IsExecutionSafe(symbol) && IsMarketOpen(symbol);
    if(!execution_safe || kill_switch || news_active)
    {
       LogNoTradeReasonPerBar(symbol, MainTF, "execution_or_news_block");
@@ -395,7 +417,7 @@ void RunTradingCycleImpl(string symbol)
    // --- 9. ตัวกรองการเปิดออเดอร์ (Execution Gate) ---
    // กรองตามการตั้งค่า เช่น อนุญาตเทรดเฉพาะตอนเปิดแท่งเทียน, หรือติด Cooldown
    if(EnableOnlyNewBarEntry && !is_new_bar) {
-      LogNoTradeReasonPerBar(symbol, MainTF, "waiting_new_bar");
+      if(ShouldLogWaitingNewBar(symbol, MainTF)) LogNoTradeReasonPerBar(symbol, MainTF, "waiting_new_bar");
       g_pipeline_final = "WAIT_BAR"; return;
    }
    if(!EnableOnlyNewBarEntry && !IsEntryCooldownOk(symbol, 0)) {
@@ -442,10 +464,10 @@ void RunTradingCycleImpl(string symbol)
    double staged_mult = 1.0;
    int e_idx = EngineIndexByName(final_signal.engine_name);
    string staged_pause_reason = "";
-   if(e_idx >= 0 && EnableEngineAutoPause && engine_metrics[e_idx].trades >= RollingPFWindow)
+   if(e_idx >= 0 && EnableEngineAutoPause && engine_metrics[e_idx].trades >= MathMax(RollingWindowTrades, RollingPFWindow))
    {
       double r_pf = engine_metrics[e_idx].rolling_pf;
-      if(r_pf < 0.90) { staged_mult = 0.50; if(is_new_bar) LogWarning(StringFormat("AutoPause Stage 1 [%s]: Rolling PF (%.2f) < 0.90. Reducing lot size by 50%%.", final_signal.engine_name, r_pf)); }
+      if(r_pf < EngineAutoPausePF) { staged_mult = 0.50; if(is_new_bar) LogWarning(StringFormat("AutoPause Stage 1 [%s]: Rolling PF (%.2f) < 0.90. Reducing lot size by 50%%.", final_signal.engine_name, r_pf)); }
       // บล็อกเฉพาะการเพิ่มไม้ (scale-in) เมื่อมีออเดอร์ค้างอยู่ ถ้าบล็อกการเข้าไม้แรกด้วย EA จะไม่มีเทรดใหม่มาฟื้น Rolling PF อีกเลย (deadlock)
       if(r_pf < 0.75 && current_pos_count > 0) { pass_scale_in = false; staged_pause_reason = "staged_pause"; if(is_new_bar) LogWarning(StringFormat("AutoPause Stage 2 [%s]: Rolling PF (%.2f) < 0.75. Blocking scale-in.", final_signal.engine_name, r_pf)); }
    }
@@ -492,6 +514,14 @@ void RunTradingCycleImpl(string symbol)
    // ทดสอบเพดานความเสี่ยงรวม (Limit Gate) เช่น Exposure, Portfolio Heat, Price Clustering
    LimitGateResult limit_res;
    EvaluateLimitGate(symbol, final_signal.direction, risk.lots, risk.risk_money, snapshot, limit_res);
+   if(EnableLegacyExposureCheck)
+   {
+      string legacy_reason = "";
+      if(!CheckExposureLimits(symbol, final_signal.direction, risk.lots, legacy_reason))
+      { limit_res.exposure_cap_pass = false; limit_res.exp_fail_reason = legacy_reason; }
+      if(!CheckGlobalPortfolioHeat(risk.risk_money, legacy_reason))
+      { limit_res.heat_cap_pass = false; limit_res.heat_fail_reason = legacy_reason; }
+   }
    
    // ข้อยกเว้นพิเศษ (Ultimate Bypass): หากความมั่นใจสูงมากๆ จะยอมให้พอร์ตรับความเสี่ยง(Heat)เกินกำหนดเล็กน้อยได้
    if(final_signal.confidence > 0.95 && limit_res.portfolio_pass && pass_scale_in && limit_res.exposure_cap_pass && limit_res.price_clustering_pass && limit_res.max_positions_pass)
@@ -508,7 +538,11 @@ void RunTradingCycleImpl(string symbol)
                            risk.lots, EnumToString(regime)));
       
       // ส่งคำสั่งพร้อมระบบลองใหม่หากผิดพลาดหน้างานเล็กน้อย
-      if(SendOrderWithRetry(final_signal, risk)) {
+      double meta_prob = -1.0;
+      if(!MetaGatePass(final_signal, meta_prob)) {
+         LogNoTradeReasonPerBar(symbol, MainTF, StringFormat("meta_filter(p=%.3f<%.2f)", meta_prob, MetaMinProb));
+         g_pipeline_final = "META_BLOCK";
+      } else if(SendOrderWithRetry(final_signal, risk)) {
          if(StringFind(final_signal.reason, "PIPELINE_RESCUE") >= 0)
             LogInfo(StringFormat("PipelineRescueOrderSent[%s]: dir=%s score=%.2f conf=%.2f quality=%.2f engine=%s",
                                  symbol, (final_signal.direction == SIGNAL_BUY ? "BUY" : "SELL"),
@@ -555,6 +589,11 @@ int OnInit()
       return INIT_FAILED;
    }
    FetchRealNews(); // โหลดข้อมูลข่าวเศรษฐกิจเพื่อกรองข่าว
+   {
+      SymbolParams sp;
+      if(GetParamsForSymbol(_Symbol, sp))
+         LogInfo(StringFormat("SymbolParams[%s]: ema=%d/%d rsi=%.0f/%.0f atr_mult=%.2f", sp.symbol, sp.ema_fast, sp.ema_slow, sp.rsi_low, sp.rsi_high, sp.atr_mult));
+   }
    g_test_force_once_consumed = false;
    g_last_decision_trace_log = TimeCurrent();
    ResetSkipReasons();
@@ -584,6 +623,7 @@ int OnInit()
    if(!MarketDataInit()) return INIT_FAILED;      // เริ่มต้นระบบข้อมูลตลาด
    if(!FeatureEngineInit()) return INIT_FAILED;   // เริ่มต้นระบบอินดิเคเตอร์
    if(!OnnxOverlayInit()) return INIT_FAILED;     // เริ่มต้นระบบ AI (ONNX)
+   MetaModelInit();                               // โหลดโมเดล Meta-label (เมื่อเปิด EnableMetaGate)
    if(!NeuralBridgeInit()) return INIT_FAILED;    // เริ่มต้นระบบ Neural Network ภายนอก
    if(!NewsFilterInit()) return INIT_FAILED;      // เริ่มต้นระบบกรองข่าว
    
@@ -663,6 +703,20 @@ void OnDeinit(const int reason)
       LogPipelineRescueSummary();
       LogDailyLossClusterSummary();
       LogHardSLSummary();
+      for(int ei = 0; ei < 3; ei++)
+         LogInfo(StringFormat("EngineStatus %s: %s", EngineNameByIndex(ei), EngineStatusToString(engine_metrics[ei].status)));
+      LogInfo(StringFormat("PauseRemaining auto_guard=%ds regime=%ds", GetAutoGuardPauseRemainingSec(), GetRegimePauseRemainingSec()));
+      LogInfo(StringFormat("ExecStats rejects=%d news_blocks=%d avg_slip=%.1fpts (~%.4f USD at %.2f lot)",
+                           GetExecutionRejectCount(), GetExecutionNewsBlocks(), GetExecutionAvgSlippagePoints(),
+                           PointsToMoney(_Symbol, GetExecutionAvgSlippagePoints(), FixedLotSize), FixedLotSize));
+      for(int ri = 0; ri < GetDecisionReasonCount(); ri++)
+         if(GetDecisionReasonValue(ri) >= 500)
+            LogInfo(StringFormat("SkipReason %s = %d", GetDecisionReasonName(ri), GetDecisionReasonValue(ri)));
+   }
+   if(EnableSMCOverlay)
+   {
+      SMCVisualDeleteLegacyBlockMarkers(_Symbol);
+      ClearSMCVisualObjects(_Symbol);
    }
 
    GenerateWeeklySummary(); // สร้างรายงานสรุปประจำสัปดาห์
@@ -673,6 +727,7 @@ void OnDeinit(const int reason)
    // คืนทรัพยากรทุกโมดูล
    NeuralBridgeDeinit();
    OnnxOverlayDeinit();
+   MetaModelDeinit();
    FeatureEngineDeinit();
    MarketDataDeinit();
    ReleaseSingleInstanceGuard(); // ปลดล็อกการเช็คหน้าต่าง

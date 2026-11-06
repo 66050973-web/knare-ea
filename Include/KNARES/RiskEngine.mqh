@@ -146,8 +146,9 @@ bool EvaluateRisk(const SignalPack &signal, const MarketSnapshot &features, Risk
    // เลือกระหว่างการใช้ Lot คงที่ หรือคำนวณตามความเสี่ยงที่ตั้งไว้
    if(LotMode == LOT_FIXED)
    {
-      lots = FixedLotSize; 
-      risk_money = FixedLotSize * loss_per_lot; // อัปเดตมูลค่าเงินเสี่ยงตาม Lot คงที่
+      double fixed_lots = (FixedLotSize > 0.0) ? FixedLotSize : TestForceLots; // TestForceLots ใช้เป็นค่าสำรองสำหรับ DEV
+      lots = fixed_lots; 
+      risk_money = fixed_lots * loss_per_lot; // อัปเดตมูลค่าเงินเสี่ยงตาม Lot คงที่
    }
    else
    {

@@ -7,6 +7,7 @@
 
 #include "Types.mqh"
 #include "SMCContext.mqh"
+#include "SMCBookMap.mqh"
 
 //+------------------------------------------------------------------+
 //| SMC Filter Layer                                                 |
@@ -336,6 +337,20 @@ bool ApplySMCFilterToSignal(const string symbol,
    bool is_buy = (signal.direction == SIGNAL_BUY);
    bool is_sell = (signal.direction == SIGNAL_SELL);
 
+   // แผนที่โครงสร้างตามตำรา: อนุญาตเฉพาะทิศที่ตรงกับทิศแผนที่ (โหมด 2 ใช้แทนตัวกรองโครงสร้างเดิมทั้งหมด)
+   if(SMCBookMapMode > 0 && (is_buy || is_sell))
+   {
+      int book_dir = SMCBookMapDirection(symbol, SMCBookMapTF, SMCBookMapPivotN, SMCBookMapWarmBars, SMCBookMapLog);
+      if((is_buy && book_dir != 1) || (is_sell && book_dir != -1))
+      {
+         block_reason = StringFormat("block_smc_bookmap(signal=%s map=%d)", is_buy ? "BUY" : "SELL", book_dir);
+         return false;
+      }
+      signal.reason += "|smc_bookmap_aligned";
+      if(SMCBookMapMode == 2)
+         return true;
+   }
+
    // --- ส่วนของการกรองฝั่งซื้อ (Buy Filters) ---
    if(is_buy && SMCUsePremiumDiscountFilter && SMCShouldBlockBuyPremiumExtreme(snap, runtime_regime, ctx, block_reason))
       return false;
@@ -355,7 +370,7 @@ bool ApplySMCFilterToSignal(const string symbol,
             signal.confidence = MathMax(0.0, signal.confidence - pen * 0.50);
             signal.reason += "|smc_neutral_bias_penalty";
             if(EnableDebugLogs)
-               PrintFormat("SMCFilterPenalty[%s]: neutral BUY weak context penalty=%.3f adx=%.2f slope=%.5f pos=%.2f", symbol, pen, snap.adx, snap.ema_slope, ctx.position_in_range);
+               if(ShouldLogSignalPenalty(symbol, "smc_neutral_buy")) PrintFormat("SMCFilterPenalty[%s]: neutral BUY weak context penalty=%.3f adx=%.2f slope=%.5f pos=%.2f", symbol, pen, snap.adx, snap.ema_slope, ctx.position_in_range);
          }
          else
          {

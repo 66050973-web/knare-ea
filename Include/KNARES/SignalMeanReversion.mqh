@@ -58,7 +58,8 @@ bool BuildMeanRevSignal(const MarketSnapshot &features, ENUM_REGIME_TYPE regime,
    
    // --- ตรวจสอบ Regime ที่เหมาะสม ---
    // อนุญาตเฉพาะช่วงตลาด Sideway (Range) หรือช่วงที่กำลังจะเกิดการระเบิดของราคา (Breakout Ready)
-   if(regime != REGIME_RANGE && regime != REGIME_BREAKOUT_READY && !allow_unknown && !allow_trend_selective)
+   // ตารางตัวคูณกำหนดให้ MeanRev ทำงานได้ใน RANGE_CHOPPY (x0.8) และ CHOPPY (x0.5) ด้วย
+   if(regime != REGIME_RANGE && regime != REGIME_RANGE_CHOPPY && regime != REGIME_CHOPPY && regime != REGIME_BREAKOUT_READY && !allow_unknown && !allow_trend_selective)
    {
       signal.reason = StringFormat("regime_mismatch(%s)", EnumToString(regime));
       return false;

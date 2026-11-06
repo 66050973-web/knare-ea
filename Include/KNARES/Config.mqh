@@ -17,8 +17,8 @@
 
 input group "--- 1. BASIC TRADING & RISK (การตั้งค่าพื้นฐานและความเสี่ยง) ---"
 input string Symbols               = "EURUSD,GBPUSD,XAUUSD"; // รายชื่อคู่เงินที่ต้องการให้ EA ทำงาน (ใช้เครื่องหมายจุลภาคคั่น)
-input ENUM_TIMEFRAMES MainTF       = PERIOD_M1;              // ไทม์เฟรมหลักที่ใช้ในการวิเคราะห์สัญญาณ (Signal Timeframe)
-input ENUM_TIMEFRAMES HigherTF     = PERIOD_H1;              // ไทม์เฟรมที่สูงกว่าเพื่อใช้ดูทิศทางเทรนด์ใหญ่ (Filter Timeframe)
+input ENUM_TIMEFRAMES MainTF       = PERIOD_M15;              // ไทม์เฟรมหลักที่ใช้ในการวิเคราะห์สัญญาณ (Signal Timeframe)
+input ENUM_TIMEFRAMES HigherTF     = PERIOD_H4;              // ไทม์เฟรมที่สูงกว่าเพื่อใช้ดูทิศทางเทรนด์ใหญ่ (Filter Timeframe)
 input ENUM_LOT_MODE LotMode         = LOT_FIXED;             // รูปแบบการคำนวณลอต (LOT_FIXED: คงที่, LOT_RISK_PCT: ตามความเสี่ยง %)
 input double FixedLotSize          = 0.01;                   // ขนาดลอตที่ใช้เมื่อตั้งเป็นโหมดคงที่ (Fixed Lot)
 input double RiskPerTradePct       = 0.005;                  // ความเสี่ยงสูงสุดต่อไม้ (0.005 = 0.5% ของ Equity)
@@ -27,7 +27,7 @@ input ulong  MagicNumber           = 20260429;               // รหัสป�
 input group "--- 2. CORE STRATEGY TOGGLES (เปิด/ปิด ระบบหลัก) ---"
 input bool   EnableTrendEngine     = true;                   // เปิดใช้งานกลยุทธ์ตามเทรนด์ (Trend Following)
 input bool   EnableBreakoutEngine  = false;                  // เปิดใช้งานกลยุทธ์เบรคเอาท์ (Breakout Strategy)
-input bool   EnableMeanRevEngine   = false;                  // เปิดใช้งานกลยุทธ์สวนเทรนด์หาค่าเฉลี่ย (Mean Reversion)
+input bool   EnableMeanRevEngine   = true;                   // เปิดใช้งานกลยุทธ์สวนเทรนด์หาค่าเฉลี่ย (Mean Reversion)
 input bool   EnableSmartRecovery   = true;                   // เปิดใช้งานระบบแก้พอร์ตอัตโนมัติ (Recovery Mode)
 input bool   EnableDynamicRisk     = true;                   // เปิดใช้งานการปรับลดความเสี่ยงอัตโนมัติเมื่อพอร์ตเริ่มเสียหาย
 input int    LossStreakLimit       = 5;                      // จำนวนไม้ที่แพ้ติดต่อกันก่อนที่ระบบจะเริ่มลดขนาดความเสี่ยงลง
@@ -48,6 +48,8 @@ input bool   EnableNewsFilter      = true;                   // เปิดใ�
 
 input group "--- 5. SESSION CONTROL (การควบคุมช่วงเวลาทำงาน) ---"
 input int    StartHour             = 0;                      // ชั่วโมงที่เริ่มทำงาน (Server Time)
+input int    SkipHourFrom          = -1;                     // เริ่มช่วงชั่วโมงที่งดเปิดไม้ (Server Time, -1 = ไม่งด)
+input int    SkipHourTo            = -1;                     // สิ้นสุดช่วงงด (ไม่รวมชั่วโมงนี้)
 input int    EndHour               = 24;                     // ชั่วโมงที่สิ้นสุดการทำงาน
 input bool   TradeOnFridayClose    = true;                   // อนุญาตให้ถือออเดอร์ข้ามคืนวันศุกร์หรือไม่
 
@@ -61,9 +63,9 @@ input group "--- 5C. TELEGRAM DAILY REPORT (รายงานสรุปรา
 input bool   EnableDailyReport     = true;                   // ส่งสรุปผลรายวันเข้า Telegram หลังเปลี่ยนวันตามเวลา Server (ต้องรัน webhook_bridge/telegram_server.py)
 
 input group "--- ADVANCED: ENGINE TUNING (การปรับจูนระบบวิเคราะห์เชิงลึก) ---"
-input double TrendEngineATRStopMultiple = 2.5;              // ระยะ SL พิเศษเฉพาะกลยุทธ์ Trend
+input double TrendEngineATRStopMultiple = 4.0;              // ระยะ SL พิเศษเฉพาะกลยุทธ์ Trend
 input double TrendEngineTakeProfitR     = 2.0;              // เป้าหมายกำไรเฉพาะกลยุทธ์ Trend
-input int    TrendMinStopDistancePoints = 400;              // ระยะ SL ขั้นต่ำของกลยุทธ์ Trend
+input int    TrendMinStopDistancePoints = 7000;              // ระยะ SL ขั้นต่ำของกลยุทธ์ Trend
 input int    BreakoutMinStopDistancePoints = 150;           // ระยะ SL ขั้นต่ำของกลยุทธ์ Breakout
 input int    MeanRevMinStopDistancePoints = 250;            // ระยะ SL ขั้นต่ำของกลยุทธ์ Mean Reversion
 input double HighConvictionScoreThreshold = 0.90;           // เกณฑ์คะแนนที่ถือว่ามีความมั่นใจสูงมาก (> 0.90)
@@ -79,7 +81,7 @@ input double RiskRestoreStep         = 0.10;                 // ขั้นใ�
 input group "--- ADVANCED: PARTIAL CLOSE (การแบ่งปิดกำไรบางส่วน) ---"
 input bool   EnablePartialClose    = true;                   // เปิดใช้งานระบบแบ่งขายทำกำไรระหว่างทาง
 input double PartialCloseLevelR     = 1.00;                  // ระดับกำไรที่ถึงเป้าหมายแรก (1R) แล้วจะทำการแบ่งปิด
-input double EarlyBreakEvenR        = 0.75;                  // ระดับกำไรที่ระบบจะเริ่มเลื่อน SL มาคุ้มทุน (Breakeven)
+input double EarlyBreakEvenR        = 1.2;                  // ระดับกำไรที่ระบบจะเริ่มเลื่อน SL มาคุ้มทุน (Breakeven)
 input double PartialCloseSizePct   = 0.5;                    // เปอร์เซ็นต์ของลอตที่จะปิดทำกำไรก่อน (เช่น 0.5 = ปิดครึ่งหนึ่ง)
 input double PartialCloseMinLots   = 0.01;                   // ขนาดลอตต่ำสุดที่โบรกเกอร์ยอมให้แบ่งปิดได้
 
@@ -130,6 +132,12 @@ bool   ModifyOncePerBar      = true;                         // จำกัด�
 double SpreadMedianMultiple  = 1.2;                          // กรองสัญญาณโดยใช้ค่ากลางของ Spread ย้อนหลัง
 double ScoreFloorEpsilon      = 0.005;                       // ค่าเผื่อความคลาดเคลื่อนสำหรับการเปรียบเทียบคะแนน
 double HMMShiftRiskBlockThreshold = 0.80;                    // บล็อกการเทรดหาก HMM แจ้งว่าความเสี่ยงสภาวะตลาดเปลี่ยนสูงเกินไป
+input bool   EnableMetaGate     = false;                     // เปิดตัวกรองสัญญาณด้วยโมเดล ML (ONNX ฝังในตัว EA) ก่อนส่งคำสั่ง
+input double MetaMinProb        = 0.45;                      // เกณฑ์ P(win) ขั้นต่ำที่โมเดล ML ต้องให้ถึงจึงจะเปิดออเดอร์
+input int    MetaBlockCooldownMin = 30;                      // หลังโมเดล ML บล็อกสัญญาณ ให้ข้ามการเข้าเทรดต่ออีกกี่นาที (กันการรอจนผ่านเกณฑ์ที่ราคาขยับไปแล้ว)
+input bool   EnableSampleExport = false;                     // บันทึกข้อมูลฝึกโมเดล (ฟีเจอร์ตอนเข้า + ผลตอนออก) ลง Common\Files\KNARES_Research
+input string SampleExportTag    = "run";                     // ชื่อชุดข้อมูล ใช้ต่อท้ายชื่อไฟล์ (Strategy Tester จะล้างไฟล์ชุดเดิมทุกครั้งที่เริ่มรัน)
+input bool UseHMMFilter       = false;                      // เปิดตัวกรอง HMM (ต้องมีไฟล์ KNARES_HMM_*_<TF>.csv จาก scripts/train_hmm.py ไม่เช่นนั้นจะไม่กรอง)
 bool   TrendRequireBothHTF   = false;                        // บังคับว่าต้องเทรนด์ตรงกันทั้ง H1 และ H4 (ถ้าเป็นเท็จ จะใช้แค่ H1)
 bool   TrendUseH1OnlyRelaxed = true;                         // ใช้เพียง H1 ในการกรองเทรนด์เพื่อให้มีโอกาสเทรดมากขึ้น
 double TrendH4MismatchPenalty = 0.04;                        // ค่าปรับที่หักออกหากเทรนด์ H4 ขัดแย้งกับสัญญาณ
@@ -165,8 +173,13 @@ bool   EnableUnknownRegimePenalty = true;                    // หักคะ�
 double UnknownRegimeScorePenalty = 0.01;                     // คะแนนที่หักในสภาวะ Unknown
 double UnknownRegimeConfPenalty  = 0.02;                     // ความเชื่อมั่นที่หักในสภาวะ Unknown
 double MaxCombinedScorePenalty = 0.02;                       // เพดานรวมของการหักคะแนนทุกกรณี (เพื่อไม่ให้คะแนนร่วงมากเกินไป)
+input bool EnableLegacyExposureCheck = false;   // ใช้ CheckExposureLimits/CheckGlobalPortfolioHeat เพิ่มจาก Limit Gate (ข้ามอินสแตนซ์)
+input bool EnableUnknownRegimeConfBypass = false; // ให้ AllowRegimeUnknownBypass ปลดบล็อก Regime Unknown เมื่อความมั่นใจสูง
+input bool EnableLegacyFeatureExport = false;     // ส่งออก Features เดิม (ExportFeatures) ตอนปิดไม้
+input bool EnableSMCOverlay = false;              // วาดโครงสร้าง SMC บนกราฟ (ไม่กระทบการเทรด)
+input string NewsCSVFile = "";                    // ไฟล์ข่าว CSV ใน Common\Files (Time,Symbol,Impact) ถ้าว่างจะใช้ ForexFactory
 bool   EnablePriceActionFilter = false;                      // เปิดใช้การตรวจสอบรูปแบบแท่งเทียน (Candlestick Patterns)
-double MinAdxSlope           = 0.0000;                       // ความชันขั้นต่ำของ ADX (เพื่อยืนยันว่ากำลังมีรอบการเล่น)
+double MinAdxSlope           = -10.0000;                       // ความชันขั้นต่ำของ ADX (เพื่อยืนยันว่ากำลังมีรอบการเล่น)
 double XAUAdaptiveSpreadFloor = 55.0;                        // เพดาน Spread พื้นฐานสำหรับทองคำ
 double XAUAdaptiveSpreadMedianMult = 2.0;                    // ตัวคูณค่ากลาง Spread สำหรับระบบ Adaptive ในทองคำ
 bool   EnableTestForceEntry  = false;                        // (สำหรับ DEV) บังคับเข้าเทรดไม้ทดสอบทันทีเมื่อเริ่มโปรแกรม
@@ -197,10 +210,10 @@ double TrailingProfitGapR      = 0.60;                       // ระยะห�
 double TrailingProfitLockMinR  = 0.10;                       // ล็อกกำไรขั้นต่ำสุดที่อนุญาต
 double TrailingProfitLockMaxR  = 2.00;                       // ล็อกกำไรสูงสุดที่จะตามราคาไป
 double TrailingProfitLockStepR = 0.05;                       // ขั้นการขยับของกำไรที่ล็อก (เพื่อลดภาระการส่งคำสั่ง)
-double TrendEarlyInvMinLossR   = 0.25;                       // ระดับขาดทุนที่เริ่มตรวจสอบสัญญาณเสียทรงเทรนด์ (Early Exit)
-double TrendEarlyInvSlopeThreshold = 0.0015;                 // เกณฑ์ความชันที่บ่งบอกว่าเทรนด์เดิมเริ่มเสียทรงแล้ว
-int    TrendEarlyInvConfirmBars = 2;                         // จำนวนแท่งเทียนยืนยันการเสียทรง
-int    TrendEarlyInvMinBarsOpen = 3;                         // จำนวนแท่งเทียนขั้นต่ำที่ต้องถือไว้ก่อนจะตรวจเช็คสัญญาณเสียทรง
+input double TrendEarlyInvMinLossR   = 0.25;                       // ระดับขาดทุนที่เริ่มตรวจสอบสัญญาณเสียทรงเทรนด์ (Early Exit)
+input double TrendEarlyInvSlopeThreshold = 0.0015;                 // เกณฑ์ความชันที่บ่งบอกว่าเทรนด์เดิมเริ่มเสียทรงแล้ว
+input int    TrendEarlyInvConfirmBars = 2;                         // จำนวนแท่งเทียนยืนยันการเสียทรง
+input int    TrendEarlyInvMinBarsOpen = 3;                         // จำนวนแท่งเทียนขั้นต่ำที่ต้องถือไว้ก่อนจะตรวจเช็คสัญญาณเสียทรง
 bool   TrendEarlyInvRequireOpposingRegime = true;            // ต้องการสภาวะตลาดฝั่งตรงข้ามมายืนยันการปิดหนีสัญญาณเสีย
 double RegimeExitMinProfitR    = 0.20;                       // กำไรขั้นต่ำที่จะยอมให้ปิดออเดอร์เมื่อสภาวะตลาดเปลี่ยนทิศ
 double RegimeExitLossCutR      = 0.50;                       // จุดตัดขาดทุนเมื่อตลาดเปลี่ยนทิศรุนแรง (ตัดขาดทุนไวกว่า SL ปกติ)
@@ -260,6 +273,7 @@ int    RSIPeriod             = 14;                           // คาบเว�
 double RSIOversold           = 28.0;                         // จุด Oversold
 double RSIOverbought         = 72.0;                         // จุด Overbought
 int    ROCPeriod             = 12;                           // คาบเวลาคำนวณ Rate of Change
+int    ATRPercentileLookback = 288;                          // จำนวนแท่งย้อนหลังสำหรับจัดอันดับ ATR Percentile (288 แท่ง M5 = 1 วัน)
 int    DonchianLookback      = 20;                           // คาบเวลาสำหรับ Donchian Channels (Breakout)
 bool   EnableTrailingStop    = false;                        // เปิดใช้งานระบบ Trailing Stop มาตรฐาน
 

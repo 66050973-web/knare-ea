@@ -85,7 +85,7 @@ ENUM_ENGINE_STATUS GetEngineStatus(const string engine_name)
    if(engine_metrics[idx].status == ENGINE_DISABLED_BY_GUARD) return ENGINE_DISABLED_BY_GUARD;
 
    // 3. ระบบ Auto-Pause: หยุดพักอัตโนมัติหาก Profit Factor ในช่วงการเทรดล่าสุด (Window) ต่ำเกินไป
-   if(EnableEngineAutoPause && engine_metrics[idx].trades >= RollingPFWindow)
+   if(EnableEngineAutoPause && engine_metrics[idx].trades >= MathMax(RollingWindowTrades, RollingPFWindow))
    {
       // คำนวณ Rolling PF ใหม่เมื่อจำนวนเทรดเปลี่ยน (เดิมไม่มีใครเรียก UpdateRollingMetrics ทำให้ rolling_pf ค้างที่ 0
       // และ Engine ถูกหยุดถาวรทันทีที่เทรดครบ RollingPFWindow)
@@ -106,7 +106,7 @@ ENUM_ENGINE_STATUS GetEngineStatus(const string engine_name)
       {
          if(s_pause_until[idx] == 0)
          {
-            s_pause_until[idx] = TimeCurrent() + (datetime)EnginePausedCooldownHours * 3600;
+            s_pause_until[idx] = TimeCurrent() + (datetime)MathMax((long)EnginePausedCooldownHours * 3600, (long)EnginePauseBars * (long)PeriodSeconds(MainTF));
             LogWarning(StringFormat("EngineAutoPause: %s paused for %dh (Rolling PF %.2f < 0.65)", engine_name, EnginePausedCooldownHours, r_pf));
             SendTelegramWebhook(_Symbol, "ENGINE_PAUSED", StringFormat("%s paused for %dh (Rolling PF %.2f < 0.65)", engine_name, EnginePausedCooldownHours, r_pf));
          }
